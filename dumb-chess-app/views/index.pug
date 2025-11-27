@@ -4,7 +4,7 @@ html
     meta(charset="UTF-8")
     title Dumb Chess Game
     style.
-      /* --- GLOBAL STYLES --- */
+      /* --- GLOBAL --- */
       body {
         font-family: 'Courier New', Courier, monospace;
         background-color: #e0e0e0;
@@ -12,14 +12,17 @@ html
         justify-content: center;
         padding-top: 20px;
         margin: 0;
+        height: 100vh;
+        overflow: hidden;
       }
 
-      /* --- LAYOUT --- */
       .game-container {
         display: flex;
         flex-direction: row;
         align-items: flex-start;
         gap: 40px;
+        filter: blur(5px); /* Blurred until difficulty is chosen */
+        transition: filter 0.5s;
       }
 
       /* --- CHESSBOARD --- */
@@ -28,17 +31,12 @@ html
         flex-direction: column;
         border: 8px solid #4a3b2a;
         background-color: #4a3b2a;
-        transition: transform 1s ease-in-out; /* Smooth spin effect */
+        transition: transform 1s ease-in-out;
       }
       
-      /* The Spin Class (Applied on Game Over) */
-      .chessboard.flipped {
-        transform: rotate(180deg);
-      }
+      .chessboard.flipped { transform: rotate(180deg); }
 
-      .row {
-        display: flex;
-      }
+      .row { display: flex; }
 
       .square {
         width: 60px;
@@ -52,21 +50,15 @@ html
         transition: transform 1s ease-in-out;
       }
 
-      /* Keep pieces upright even if board spins */
-      .chessboard.flipped .square {
-        transform: rotate(180deg);
-      }
+      .chessboard.flipped .square { transform: rotate(180deg); }
 
-      /* Board Colors */
       .black { background-color: #769656; color: black; }
       .white { background-color: #eeeed2; color: black; }
 
       /* Highlights */
-      .selected { 
-        background-color: yellow !important; 
-      }
+      .selected { background-color: yellow !important; }
       .valid-move { 
-        background-color: rgba(255, 0, 0, 0.4) !important; /* Red tint for danger */
+        background-color: rgba(255, 0, 0, 0.4) !important;
         box-shadow: inset 0 0 10px red;
       }
 
@@ -76,25 +68,14 @@ html
         padding: 25px;
         border-radius: 8px;
         border: 4px solid #4a3b2a;
-        width: 250px;
+        width: 280px;
         box-shadow: 8px 8px 0px rgba(0,0,0,0.2);
       }
 
-      .rules-panel h1 {
-        margin-top: 0;
-        font-size: 24px;
-        border-bottom: 2px solid #333;
-      }
-
-      .rules-panel ul {
-        padding-left: 20px;
-      }
-
-      .rules-panel li {
-        margin-bottom: 10px;
-        line-height: 1.4;
-      }
-
+      .rules-panel h1 { margin-top: 0; border-bottom: 2px solid #333; }
+      .rules-panel ul { padding-left: 20px; }
+      .rules-panel li { margin-bottom: 10px; line-height: 1.4; }
+      
       .warning-box {
         margin-top: 20px;
         background-color: #ffdddd;
@@ -105,10 +86,38 @@ html
         text-align: center;
       }
 
+      /* --- OVERLAYS (Start Screen & Game Over) --- */
+      #start-screen, #game-overlay {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background-color: rgba(0,0,0,0.9);
+        display: flex; flex-direction: column;
+        justify-content: center; align-items: center;
+        z-index: 2000; color: white;
+      }
+
+      .btn {
+        padding: 15px 30px; font-size: 18px; margin: 10px;
+        cursor: pointer; border: none; color: white; font-family: 'Courier New';
+        width: 200px; transition: transform 0.2s;
+      }
+      .btn:hover { transform: scale(1.05); }
+      
+      .btn-easy { background-color: #769656; }
+      .btn-hard { background-color: #d9534f; }
+      .btn-stupid { background-color: #000; border: 2px solid red; color: red; }
+
     script(src="/script.js")
 
   body
-    .game-container
+    // START SCREEN
+    #start-screen
+      h1 ♟️ DUMB CHESS
+      h3 Select Difficulty:
+      button.btn.btn-easy(onclick="selectDifficulty('easy')") EASY
+      button.btn.btn-hard(onclick="selectDifficulty('hard')") HARD (More Enemies)
+      button.btn.btn-stupid(onclick="selectDifficulty('stupid')") STUPID HARD (Queen)
+
+    .game-container#game-ui
       // THE BOARD
       .chessboard
         each row in [0, 1, 2, 3, 4, 5, 6, 7]
@@ -119,13 +128,12 @@ html
 
       // THE RULES
       .rules-panel
-        h1 ♟️ Dumb Chess
-        h3 The Rules:
-        ul
+        h1 Rules
+        ul#rules-list
           li 🛡️ **Setup:** Pawns + 1 King.
           li 👑 **Movement:** 1 block in any direction.
-          li ⚔️ **Friendly Fire:** ENABLED. You can kill your own team.
-          li 🔄 **Game Over:** Board spins when a King dies.
+          li ⚔️ **Friendly Fire:** ENABLED.
+          li 💀 **Win:** Kill the enemy King.
         
         .warning-box
           p Objective: Kill the Enemy King!
