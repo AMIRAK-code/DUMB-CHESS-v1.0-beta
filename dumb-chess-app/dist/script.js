@@ -3,33 +3,28 @@ let gameActive = false;
 
 // Piece Icons
 const PIECES = {
-    wP: '♙', wK: '♔', 
-    bP: '♟', bK: '♚', bQ: '♛', // Added Black Queen
+    wP: '♙', wK: '♔',
+    bP: '♟', bK: '♚', bQ: '♛',
     empty: ''
 };
 
 // --- GLOBAL VARIABLES ---
-let boardState = []; 
-let selectedSquare = null; 
-let isPlayerTurn = true; 
-
-document.addEventListener('DOMContentLoaded', () => {
-    // Wait for user to select difficulty
-});
+let boardState = [];
+let selectedSquare = null;
+let isPlayerTurn = true;
 
 // --- 1. GAME SETUP ---
-window.selectDifficulty = function(level) {
+window.selectDifficulty = function (level) {
     currentDifficulty = level;
     document.getElementById('start-screen').style.display = 'none';
-    document.getElementById('game-ui').style.filter = 'none'; // Unblur
-    
-    // Update Rules Text for Stupid Hard
+    document.getElementById('game-ui').style.filter = 'none';
+
     if (level === 'stupid') {
         const list = document.getElementById('rules-list');
         const queenRule = document.createElement('li');
         queenRule.style.color = 'red';
         queenRule.style.fontWeight = 'bold';
-        queenRule.innerText = "👹 BOSS: The Black Queen moves like a REAL Chess Queen (Slide any distance). Good luck.";
+        queenRule.innerText = "👹 BOSS: Black Queen moves like a REAL Chess Queen.";
         list.appendChild(queenRule);
     }
 
@@ -40,35 +35,30 @@ function initGame() {
     gameActive = true;
     isPlayerTurn = true;
     selectedSquare = null;
-    
+
     // Create 8x8 Empty Board
     boardState = Array(8).fill(null).map(() => Array(8).fill(null));
 
-    // --- SETUP BASED ON DIFFICULTY ---
-    
-    // 1. Black King (Always there)
-    boardState[0][4] = 'bK';
+    // Setup Pieces
+    boardState[0][4] = 'bK'; // Black King
 
-    // 2. Black Pawns
-    // Easy: 1 Row
-    for(let c=0; c<8; c++) boardState[1][c] = 'bP'; 
-    
-    // Hard: 2 Rows
+    // Black Pawns
+    for (let c = 0; c < 8; c++) boardState[1][c] = 'bP';
+
     if (currentDifficulty === 'hard') {
-        for(let c=0; c<8; c++) boardState[2][c] = 'bP'; 
+        for (let c = 0; c < 8; c++) boardState[2][c] = 'bP';
     }
 
-    // Stupid Hard: 1 Row + Queen
     if (currentDifficulty === 'stupid') {
-        boardState[0][3] = 'bQ'; // Place Queen next to King
+        boardState[0][3] = 'bQ'; // Black Queen
     }
 
-    // 3. White Pieces (Standard)
-    for(let c=0; c<8; c++) boardState[6][c] = 'wP'; 
-    boardState[7][4] = 'wK'; 
+    // White Pieces
+    for (let c = 0; c < 8; c++) boardState[6][c] = 'wP';
+    boardState[7][4] = 'wK';
 
     const boardEl = document.querySelector('.chessboard');
-    boardEl.classList.remove('flipped'); // Reset spin
+    boardEl.classList.remove('flipped');
     drawBoard();
 }
 
@@ -81,9 +71,8 @@ function drawBoard() {
             const pieceCode = boardState[r][c];
 
             squareEl.innerText = pieceCode ? PIECES[pieceCode] : '';
-            squareEl.classList.remove('selected', 'valid-move');
-            
-            // Clean Event Listeners
+            squareEl.classList.remove('selected', 'valid-move', 'danger-move');
+
             const newSquareEl = squareEl.cloneNode(true);
             squareEl.parentNode.replaceChild(newSquareEl, squareEl);
             newSquareEl.addEventListener('click', () => handleSquareClick(r, c));
@@ -91,42 +80,35 @@ function drawBoard() {
     }
 }
 
-// --- 3. CLICK LOGIC (Fixed Bug) ---
+// --- 3. CLICK LOGIC (No Friendly Fire) ---
 function handleSquareClick(row, col) {
     if (!gameActive || !isPlayerTurn) return;
 
     const clickedPiece = boardState[row][col];
     const isWhitePiece = clickedPiece && clickedPiece.startsWith('w');
 
-    // SCENARIO A: We already have a piece selected
+    // PRIORITY 1: Selecting a Friendly Piece
+    // If I click a white piece, I ALWAYS select it (can't attack friends)
+    if (isWhitePiece) {
+        selectedSquare = { r: row, c: col };
+        highlightValidMoves(row, col);
+        return;
+    }
+
+    // PRIORITY 2: Moving to a Target
+    // If I have a selection, and I clicked an empty spot or an enemy
     if (selectedSquare) {
-        // 1. Is this a valid move? (This handles Empty squares AND Friendly Fire attacks)
         if (isValidMove(selectedSquare.r, selectedSquare.c, row, col, boardState[selectedSquare.r][selectedSquare.c])) {
             movePiece(selectedSquare.r, selectedSquare.c, row, col);
-            
+
             if (gameActive) {
                 isPlayerTurn = false;
                 setTimeout(aiTurn, 600);
             }
-            return; // Move complete
-        }
-        
-        // 2. If it's NOT a valid move, but I clicked another White piece, switch selection
-        if (isWhitePiece) {
-            selectedSquare = { r: row, c: col };
-            highlightValidMoves(row, col);
-            return;
-        }
-
-        // 3. Clicked somewhere invalid (empty far away, etc) -> Deselect
-        selectedSquare = null;
-        drawBoard(); // Clear highlights
-    } 
-    // SCENARIO B: No piece selected yet
-    else {
-        if (isWhitePiece) {
-            selectedSquare = { r: row, c: col };
-            highlightValidMoves(row, col);
+        } else {
+            // Invalid move and not a friendly piece -> Deselect
+            selectedSquare = null;
+            drawBoard();
         }
     }
 }
@@ -136,16 +118,24 @@ function isValidMove(fromR, fromC, toR, toC, pieceType) {
     const dRow = Math.abs(toR - fromR);
     const dCol = Math.abs(toC - fromC);
 
-    // 1. QUEEN LOGIC (Stupid Hard Mode)
+    // --- FRIENDLY FIRE CHECK ---
+    const target = boardState[toR][toC];
+    const myColor = pieceType.charAt(0); // 'w' or 'b'
+    if (target && target.startsWith(myColor)) {
+        return false; // Cannot move onto own piece
+    }
+
+    // --- GEOMETRY CHECKS ---
+
+    // 1. QUEEN (Stupid Hard)
     if (pieceType === 'bQ') {
-        // Must be straight line or diagonal
         if (dRow === 0 || dCol === 0 || dRow === dCol) {
             return isPathClear(fromR, fromC, toR, toC);
         }
         return false;
     }
 
-    // 2. DUMB LOGIC (Everyone Else - 1 Step)
+    // 2. STANDARD (1 Block)
     if (dRow <= 1 && dCol <= 1 && (dRow + dCol > 0)) {
         return true;
     }
@@ -159,24 +149,22 @@ function isPathClear(r1, c1, r2, c2) {
     let r = r1 + dr;
     let c = c1 + dc;
 
-    // Check all squares BETWEEN start and end
+    // Check squares strictly BETWEEN start and end
     while (r !== r2 || c !== c2) {
         if (boardState[r][c] !== null) return false; // Blocked
         r += dr;
         c += dc;
     }
-    return true; // Path is clear
+    return true;
 }
 
 function highlightValidMoves(r, c) {
-    drawBoard(); 
+    drawBoard();
     document.getElementById(`square-${r}-${c}`).classList.add('selected');
     const pieceType = boardState[r][c];
 
-    // Check all squares on board
     for (let i = 0; i < 8; i++) {
         for (let j = 0; j < 8; j++) {
-            // Optimization: Only check neighbors for normal pieces, all board for Queen
             if (isValidMove(r, c, i, j, pieceType)) {
                 document.getElementById(`square-${i}-${j}`).classList.add('valid-move');
             }
@@ -190,22 +178,21 @@ function movePiece(fromR, fromC, toR, toC) {
     const target = boardState[toR][toC];
 
     // Win Conditions
-    if (target === 'wK') endGame('Black Wins! You killed your own King.', false);
     if (target === 'bK') endGame('White Wins! The King is dead.', true);
+    if (target === 'wK') endGame('Black Wins! Your King is dead.', false);
 
     boardState[toR][toC] = piece;
     boardState[fromR][fromC] = null;
     drawBoard();
 }
 
-// --- 6. AI LOGIC (Enhanced) ---
+// --- 6. AI LOGIC ---
 function aiTurn() {
     if (!gameActive) return;
 
     const blackPieces = [];
     let whiteKingPos = null;
 
-    // Scan Board
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
             const p = boardState[r][c];
@@ -220,7 +207,7 @@ function aiTurn() {
     let highestScore = -99999;
 
     blackPieces.forEach(piece => {
-        // For Queen, scan whole board. For others, scan neighbors.
+        // Optimize search area
         const rMin = piece.type === 'bQ' ? 0 : Math.max(0, piece.r - 1);
         const rMax = piece.type === 'bQ' ? 7 : Math.min(7, piece.r + 1);
         const cMin = piece.type === 'bQ' ? 0 : Math.max(0, piece.c - 1);
@@ -228,29 +215,23 @@ function aiTurn() {
 
         for (let i = rMin; i <= rMax; i++) {
             for (let j = cMin; j <= cMax; j++) {
-                
+
+                // isValidMove now automatically prevents AI friendly fire
                 if (isValidMove(piece.r, piece.c, i, j, piece.type)) {
                     const targetContent = boardState[i][j];
                     let score = 0;
 
                     // AI Priorities
-                    if (targetContent === 'wK') score = 5000; // WIN
+                    if (targetContent === 'wK') score = 5000;
                     else if (targetContent === 'wP') score = 50;
-                    else if (targetContent && targetContent.startsWith('b')) score = -500; // Avoid Friendly Fire
                     else {
-                        // Distance heuristic
+                        // Move closer to King
                         const currentDist = Math.abs(piece.r - whiteKingPos.r) + Math.abs(piece.c - whiteKingPos.c);
                         const newDist = Math.abs(i - whiteKingPos.r) + Math.abs(j - whiteKingPos.c);
                         if (newDist < currentDist) score += 10;
                     }
 
-                    // Queen Logic: Don't risk the Queen unless necessary
-                    if (piece.type === 'bQ') {
-                         score += 5; // Prefer moving Queen slightly to intimidate
-                         // If moving to a spot where a white Pawn is diagonal (1 step), danger! (Simplified check)
-                    }
-
-                    score += Math.random() * 10; // Randomness
+                    score += Math.random() * 10;
 
                     if (score > highestScore) {
                         highestScore = score;
@@ -264,7 +245,7 @@ function aiTurn() {
     if (bestMove) {
         const target = boardState[bestMove.toR][bestMove.toC];
         movePiece(bestMove.fromR, bestMove.fromC, bestMove.toR, bestMove.toC);
-        
+
         if (target !== 'wK') {
             isPlayerTurn = true;
         }
@@ -274,29 +255,20 @@ function aiTurn() {
 // --- 7. GAME OVER ---
 function endGame(message, playerWon) {
     gameActive = false;
-    
     document.querySelector('.chessboard').classList.add('flipped');
-    
+
     const overlay = document.createElement('div');
     overlay.id = 'game-overlay';
-    
+
     const msgEl = document.createElement('h1');
     msgEl.innerText = message;
-    msgEl.style.textAlign = 'center';
-    
-    const subMsg = document.createElement('p');
-    subMsg.innerText = playerWon ? "Well played!" : "Try again?";
-    
+
     const retryBtn = document.createElement('button');
     retryBtn.className = 'btn btn-easy';
     retryBtn.innerText = 'MAIN MENU';
-    
-    retryBtn.onclick = function() {
-        location.reload(); // Refresh page to go back to start screen
-    };
+    retryBtn.onclick = function () { location.reload(); };
 
     overlay.appendChild(msgEl);
-    overlay.appendChild(subMsg);
     overlay.appendChild(retryBtn);
     document.body.appendChild(overlay);
 }
